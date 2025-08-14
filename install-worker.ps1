@@ -56,6 +56,22 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "Image already exists locally: $IMAGE_NAME"
 }
 
+# Get Host MAC address
+$adapters = Get-NetAdapter -Physical -ErrorAction SilentlyContinue |
+    Where-Object { $_.Status -eq 'Up' -and $_.HardwareInterface -eq $true } |
+    Sort-Object -Property LinkSpeed -Descending
+
+if (-not $adapters) {
+    $adapters = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Sort-Object -Property LinkSpeed -Descending
+}
+
+$HostMacRaw = $adapters | Select-Object -First 1 -ExpandProperty MacAddress
+$HostMac = ($HostMacRaw -replace '[-:]','')
+$HostMac = ($HostMac -replace '(.{2})(?=.)','$1:').TrimEnd(':')
+
+if (-not $HostMac) { Fail "Could not detect host MAC address." }
+Write-Host "Detected Host MAC: $HostMac"
+
 # Config file
 $CONFIG_PATH = Read-Host "Enter path to worker-config.json (Default: $DefaultConfigPath)"
 if ([string]::IsNullOrWhiteSpace($CONFIG_PATH)) { $CONFIG_PATH = $DefaultConfigPath }
@@ -86,6 +102,7 @@ $runArgs = @(
     "--name", $containerName
     "--gpus", "all"
     "-e", "GPU_TYPE=$GPU_TYPE"
+    "-e", "HOST_MAC=$HostMac"
     "-v", $volumeSpec
     $IMAGE_NAME
 )
